@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from tkinter.scrolledtext import ScrolledText
+from tkhtmlview import HTMLLabel
 import pandas as pd
 import os
 import time
@@ -29,12 +29,12 @@ class EmailSenderGUI:
         tk.Entry(root, textvariable=self.html_path, width=40).grid(row=1, column=1)
         tk.Button(root, text="Browse", command=self.browse_html).grid(row=1, column=2)
 
-        # Email preview
+        # HTML preview area
         tk.Label(root, text="First Email Preview:").grid(row=2, column=0, sticky="ne")
-        self.preview = ScrolledText(root, width=80, height=20)
-        self.preview.grid(row=2, column=1, columnspan=2)
+        self.html_preview = HTMLLabel(root, html="", width=80, height=20, background="white", relief="sunken", bd=1)
+        self.html_preview.grid(row=2, column=1, columnspan=2, sticky="nsew")
 
-        # Action buttons
+        # Buttons
         tk.Button(root, text="Preview First Email", command=self.load_preview).grid(row=3, column=1, sticky="e")
         tk.Button(root, text="Draft Emails", command=lambda: self.run_email_logic(send_mode=False)).grid(row=4, column=1, sticky="e")
         tk.Button(root, text="Send Emails", command=lambda: self.run_email_logic(send_mode=True)).grid(row=4, column=2, sticky="w")
@@ -68,9 +68,8 @@ class EmailSenderGUI:
             first = df.iloc[0]
             with open(html, 'r', encoding='utf-8') as f:
                 template = f.read()
-            preview_text = template.replace("{contact_name}", first["Name"]).replace("{company_name}", first["Company"])
-            self.preview.delete(1.0, tk.END)
-            self.preview.insert(tk.END, preview_text)
+            preview_html = template.replace("{contact_name}", first["Name"]).replace("{company_name}", first["Company"])
+            self.html_preview.set_html(preview_html)
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
