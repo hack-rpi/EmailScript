@@ -26,6 +26,7 @@ class EmailSenderApp:
         self.attachment_paths = []
         self.image_paths = []
         self.subject_template = tk.StringVar(value="HackRPI 2025 Sponsorship Invitation for {company_name}")
+        self.history = []
 
         self.df = pd.DataFrame()
 
@@ -75,11 +76,13 @@ class EmailSenderApp:
 
         tk.Button(email_tab, text="Add PDF Attachment(s)", command=self.add_attachments).grid(row=5, column=1, sticky="ew", padx=5, pady=5)
         tk.Button(email_tab, text="Add Inline Image(s)", command=self.add_images).grid(row=5, column=2, sticky="ew", padx=5, pady=5)
+        tk.Button(email_tab, text="Undo Last Action", command=self.undo_last_action).grid(row=5, column=3, sticky="ew", padx=5, pady=5)
 
         self.image_preview_frame = tk.Frame(email_tab)
-        self.image_preview_frame.grid(row=6, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        self.image_preview_frame.grid(row=7, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
 
-        tk.Button(email_tab, text="Send Emails", command=self.send_emails).grid(row=7, column=2, sticky="e", padx=5, pady=10)
+        tk.Button(email_tab, text="Draft Emails", command=lambda: self.send_emails(draft_only=True)).grid(row=8, column=1, sticky="e", padx=5, pady=10)
+        tk.Button(email_tab, text="Send Emails", command=lambda: self.send_emails(draft_only=False)).grid(row=8, column=2, sticky="e", padx=5, pady=10)
 
     def build_csv_viewer_tab(self, notebook):
         csv_tab = tk.Frame(notebook)
@@ -93,6 +96,7 @@ class EmailSenderApp:
         self.csv_table.configure(yscrollcommand=scrollbar_y.set)
 
     def toggle_html_source(self):
+        self.history.append(('toggle_html', self.use_html_file.get()))
         if self.use_html_file.get():
             self.html_file_entry.grid()
             self.browse_html_button.grid()
@@ -100,18 +104,30 @@ class EmailSenderApp:
         else:
             self.html_file_entry.grid_forget()
             self.browse_html_button.grid_forget()
-            self.html_editor.grid(row=3, column=1, columnspan=3, rowspan=2, sticky="nsew", padx=5, pady=5)
+            self.html_editor.grid(row=6, column=0, columnspan=4, sticky="nsew", padx=5, pady=5)
+            tk.Button(self.root.nametowidget(self.html_editor.winfo_parent()), text="Save HTML to File", command=self.save_html_to_file).grid(row=6, column=3, sticky="ne", padx=5, pady=5)
 
     def browse_csv(self):
         path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
         if path:
+            self.history.append(('csv_path', self.csv_path.get()))
             self.csv_path.set(path)
             self.load_csv(path)
 
     def browse_html(self):
         path = filedialog.askopenfilename(filetypes=[("HTML files", "*.html")])
         if path:
+            self.history.append(('html_path', self.html_path.get()))
             self.html_path.set(path)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                self.html_editor.delete("1.0", tk.END)
+                self.html_editor.insert(tk.END, html_content)
+                self.use_html_file.set(False)
+                self.toggle_html_source()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load HTML: {e}")
 
     def load_csv(self, path):
         try:
@@ -133,19 +149,42 @@ class EmailSenderApp:
             self.csv_table.heading(col, text=col)
             self.csv_table.column(col, anchor="w", width=150)
 
-        for _, row in self.df.head(50).iterrows():
+        for _, row in self.df.iterrows():
             self.csv_table.insert("", "end", values=list(row))
 
     def add_attachments(self):
         paths = filedialog.askopenfilenames(filetypes=[("PDF files", "*.pdf")])
         if paths:
+            self.history.append(('attachments', list(self.attachment_paths)))
             self.attachment_paths.extend(paths)
 
     def add_images(self):
         paths = filedialog.askopenfilenames(filetypes=[("Image files", "*.png;*.jpg;*.jpeg;*.gif")])
         if paths:
+            self.history.append(('images', list(self.image_paths)))
             self.image_paths.extend(paths)
             self.show_image_previews()
+
+    def undo_last_action(self):
+        if not self.history:
+            messagebox.showinfo("Undo", "Nothing to undo.")
+            return
+
+        action, previous = self.history.pop()
+
+        if action == 'attachments':
+            self.attachment_paths = previous
+        elif action == 'images':
+            self.image_paths = previous
+            self.show_image_previews()
+        elif action == 'csv_path':
+            self.csv_path.set(previous)
+            self.load_csv(previous)
+        elif action == 'html_path':
+            self.html_path.set(previous)
+        elif action == 'toggle_html':
+            self.use_html_file.set(previous)
+            self.toggle_html_source()
 
     def show_image_previews(self):
         for widget in self.image_preview_frame.winfo_children():
@@ -161,7 +200,12 @@ class EmailSenderApp:
             except:
                 pass
 
-    def send_emails(self):
+    def send_emails(self, draft_only=True):
+        if draft_only:
+            confirm = messagebox.askyesno("Confirm Draft", "Do you want to draft the emails now?")
+            if not confirm:
+                messagebox.showinfo("Canceled", "Drafting canceled by user.")
+                return
         if not os.path.exists(self.csv_path.get()):
             messagebox.showerror("Error", "CSV file is missing.")
             return
@@ -185,14 +229,29 @@ class EmailSenderApp:
             pythoncom.CoInitialize()
             outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
 
-            for _, row in df.iterrows():
+            progress = ttk.Progressbar(self.root, orient="horizontal", length=300, mode="determinate")
+            progress.pack(pady=10)
+            progress["maximum"] = len(df)
+            for i, (_, row) in enumerate(df.iterrows()):
                 mail = outlook.CreateItem(0)
                 mail.To = row["Email"]
-                subject = self.subject_template.get().replace("{company_name}", row["Company"]).replace("{contact_name}", row["Name"])
+                subject = self.subject_template.get().replace("{company_name}", str(row["Company"])).replace("{contact_name}", str(row["Name"]))
+                subject = subject.strip().splitlines()[0]
                 mail.Subject = subject
                 body = html_template.replace("{contact_name}", row["Name"]).replace("{company_name}", row["Company"])
+                
 
                 if self.use_html_format.get():
+                    for i, img_path in enumerate(self.image_paths):
+                        try:
+                            attachment = mail.Attachments.Add(img_path)
+                            cid = f"img{i}"
+                            attachment.PropertyAccessor.SetProperty(
+                                "http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid
+                            )
+                            body = body.replace(f"cid:image{i}", f"cid:{cid}")
+                        except Exception as e:
+                            print(f"Failed to attach image {img_path}: {e}")
                     mail.HTMLBody = body
                 else:
                     mail.Body = body
@@ -200,15 +259,22 @@ class EmailSenderApp:
                 for file in self.attachment_paths:
                     mail.Attachments.Add(file)
 
-                for i, img_path in enumerate(self.image_paths):
-                    attachment = mail.Attachments.Add(img_path)
-                    attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", f"img{i}")
-                    mail.HTMLBody = mail.HTMLBody.replace(f"cid:image{i}", f"cid:img{i}")
+                
 
-                mail.Display()
+                if draft_only:
+                    mail.Display()
+                else:
+                    mail.Send()
+                progress["value"] = i + 1
+                progress.update()
                 time.sleep(1)
 
-            messagebox.showinfo("Success", "Emails drafted successfully.")
+            if draft_only:
+                progress.destroy()
+                messagebox.showinfo("Success", "Emails drafted successfully.")
+            else:
+                progress.destroy()
+                messagebox.showinfo("Success", "Emails sent successfully.")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to send emails: {e}")
@@ -218,6 +284,16 @@ class EmailSenderApp:
                 pythoncom.CoUninitialize()
             except:
                 pass
+
+    def save_html_to_file(self):
+        path = filedialog.asksaveasfilename(defaultextension=".html", filetypes=[("HTML files", "*.html")])
+        if path:
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self.html_editor.get("1.0", tk.END))
+                messagebox.showinfo("Saved", f"HTML saved to {path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save HTML: {e}")
 
     def on_exit(self):
         try:
