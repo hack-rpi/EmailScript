@@ -1,13 +1,141 @@
-import subprocess
-import sys
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from tkinter.scrolledtext import ScrolledText
 import pandas as pd
+import os
+import time
+import sys
+import subprocess
 import win32com.client as win32
 import pythoncom
 import win32com.client.gencache
-import time
-import os
 
 REQUIRED_COLUMNS = {"Name", "Company", "Email"}
+
+class EmailSenderGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Outlook Email Sender")
+
+        self.csv_path = tk.StringVar()
+        self.html_path = tk.StringVar()
+
+        # File selection
+        tk.Label(root, text="CSV File:").grid(row=0, column=0, sticky="e")
+        tk.Entry(root, textvariable=self.csv_path, width=40).grid(row=0, column=1)
+        tk.Button(root, text="Browse", command=self.browse_csv).grid(row=0, column=2)
+
+        tk.Label(root, text="HTML Template File:").grid(row=1, column=0, sticky="e")
+        tk.Entry(root, textvariable=self.html_path, width=40).grid(row=1, column=1)
+        tk.Button(root, text="Browse", command=self.browse_html).grid(row=1, column=2)
+
+        # Email preview
+        tk.Label(root, text="First Email Preview:").grid(row=2, column=0, sticky="ne")
+        self.preview = ScrolledText(root, width=80, height=20)
+        self.preview.grid(row=2, column=1, columnspan=2)
+
+        # Action buttons
+        tk.Button(root, text="Preview First Email", command=self.load_preview).grid(row=3, column=1, sticky="e")
+        tk.Button(root, text="Draft Emails", command=lambda: self.run_email_logic(send_mode=False)).grid(row=4, column=1, sticky="e")
+        tk.Button(root, text="Send Emails", command=lambda: self.run_email_logic(send_mode=True)).grid(row=4, column=2, sticky="w")
+        tk.Button(root, text="Exit", command=root.quit).grid(row=5, column=2, sticky="e")
+
+    def browse_csv(self):
+        path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if path:
+            self.csv_path.set(path)
+
+    def browse_html(self):
+        path = filedialog.askopenfilename(filetypes=[("HTML files", "*.html")])
+        if path:
+            self.html_path.set(path)
+
+    def load_preview(self):
+        csv = self.csv_path.get()
+        html = self.html_path.get()
+
+        if not os.path.exists(csv) or not os.path.exists(html):
+            messagebox.showerror("Error", "Both CSV and HTML template must be valid files.")
+            return
+
+        try:
+            df = pd.read_csv(csv)
+            if not REQUIRED_COLUMNS.issubset(df.columns):
+                missing = REQUIRED_COLUMNS - set(df.columns)
+                messagebox.showerror("Missing Columns", f"CSV is missing: {', '.join(missing)}")
+                return
+
+            first = df.iloc[0]
+            with open(html, 'r', encoding='utf-8') as f:
+                template = f.read()
+            preview_text = template.replace("{contact_name}", first["Name"]).replace("{company_name}", first["Company"])
+            self.preview.delete(1.0, tk.END)
+            self.preview.insert(tk.END, preview_text)
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def run_email_logic(self, send_mode):
+        csv = self.csv_path.get()
+        html = self.html_path.get()
+
+        if not os.path.exists(csv) or not os.path.exists(html):
+            messagebox.showerror("Error", "Both CSV and HTML template must be selected before sending.")
+            return
+
+        if send_mode:
+            confirm = messagebox.askyesno("Confirm Send", "Are you sure you want to send the emails directly?")
+            if not confirm:
+                return
+
+        try:
+            pythoncom.CoInitialize()
+
+            if is_outlook_running():
+                messagebox.showwarning("Outlook Running", "Please close Outlook completely before continuing.")
+                return
+
+            outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
+            df = pd.read_csv(csv)
+
+            if not REQUIRED_COLUMNS.issubset(df.columns):
+                missing = REQUIRED_COLUMNS - set(df.columns)
+                messagebox.showerror("Missing Columns", f"CSV is missing: {', '.join(missing)}")
+                return
+
+            with open(html, 'r', encoding='utf-8') as f:
+                template = f.read()
+
+            if not send_mode:
+                confirm = messagebox.askyesno("Confirm Drafting", "Proceed to draft the emails?")
+                if not confirm:
+                    return
+
+            for i, (_, row) in enumerate(df.iterrows()):
+                name, company, email = row["Name"], row["Company"], row["Email"]
+                mail = outlook.CreateItem(0)
+                mail.To = email
+                mail.SentOnBehalfOfName = "hackrpi@rpi.edu"
+                mail.Subject = f"HackRPI 2025 Sponsorship Invitation for {company}"
+
+                mail.HTMLBody = template.replace("{contact_name}", name).replace("{company_name}", company)
+
+                if send_mode:
+                    mail.Send()
+                else:
+                    mail.Display()
+                    if i == 0:
+                        if not messagebox.askyesno("First Draft OK?", "Is the first draft correct?"):
+                            messagebox.showinfo("Canceled", "Drafting canceled.")
+                            return
+
+                time.sleep(1)
+
+            messagebox.showinfo("Success", "Emails processed successfully.")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+        finally:
+            pythoncom.CoUninitialize()
 
 def is_outlook_running():
     try:
@@ -17,133 +145,7 @@ def is_outlook_running():
         print(f"Error checking running processes: {e}")
         return False
 
-def open_outlook():
-    if is_outlook_running():
-        print("Outlook is already running.")
-        print("Please close Outlook in Task Manager (end task for OUTLOOK.EXE) before continuing.")
-        input("Press Enter after you have closed Outlook...")
-
-        if is_outlook_running():
-            print("Outlook is still running. Exiting script.")
-            sys.exit()
-
-    try:
-        print("Starting Outlook...")
-        pythoncom.CoInitialize()
-        outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
-        print("Outlook started successfully.")
-        return outlook
-    except Exception as e:
-        print(f"Failed to start Outlook: {e}")
-        return None
-
-def get_user_input():
-    csv_file = input("Enter the name of the CSV file (e.g., Mails.csv): ").strip()
-    html_file = input("Enter the name of the HTML template file (e.g., email_template.html): ").strip()
-
-    if not os.path.exists(csv_file):
-        print(f"CSV file not found: {csv_file}")
-        sys.exit(1)
-
-    if not os.path.exists(html_file):
-        print(f"HTML template file not found: {html_file}")
-        sys.exit(1)
-
-    while True:
-        mode_input = input("Would you like to directly send the emails? (y/n): ").strip().lower()
-        if mode_input == "y":
-            while True:
-                send_mode_input = input("Please confirm you would like to directly send the emails by typing \"CONFIRM\". To draft instead please type \"DRAFT\": ").strip().lower()
-                if send_mode_input == "confirm":
-                    send_mode = True
-                    print("Direct send mode selected.")
-                    break
-                elif send_mode_input == "draft":
-                    send_mode = False
-                    print("Drafting mode selected.")
-                    break
-                else:
-                    print("Invalid input. Please type CONFIRM or DRAFT.")
-            break 
-        elif mode_input == "n":
-            send_mode = False
-            break
-        else:
-            print("Invalid input. Please type y or n.")
-
-    return csv_file, html_file, send_mode
-
-def validate_csv(df):
-    if not REQUIRED_COLUMNS.issubset(df.columns):
-        missing = REQUIRED_COLUMNS - set(df.columns)
-        print(f"CSV is missing required columns: {', '.join(missing)}")
-        sys.exit(1)
-
-def confirm_before_drafting():
-    proceed = input("Do you want to draft the emails now? (y/n): ").strip().lower()
-    if proceed != 'y':
-        print("Drafting canceled by user.")
-        sys.exit(0)
-
-def confirm_after_first_draft():
-    while True:
-        response = input("Is the first draft correct? Type \"YES\" to continue drafting the rest or \"CANCEL\" to cancel: ").strip().lower()
-        if response == "yes":
-            print("Continuing to draft remaining emails.")
-            break
-        elif response == "cancel":
-            print("Canceled remaining drafts.")
-            sys.exit(0)
-        else:
-            print("Invalid input. Please type \"YES\" or \"CANCEL\".")
-
-
-
-def main():
-    csv_file, html_file, send_mode = get_user_input()
-    outlook = open_outlook()
-
-    if not outlook:
-        print("Script terminated due to Outlook startup failure.")
-        return
-
-    try:
-        contacts = pd.read_csv(csv_file)
-        validate_csv(contacts)
-
-        with open(html_file, 'r', encoding='utf-8') as f:
-            html_template = f.read()
-
-        if not send_mode:
-            confirm_before_drafting()
-
-        for i, (_, row) in enumerate(contacts.iterrows()):
-            contact_name = row["Name"]
-            company_name = row["Company"]
-            email = row["Email"]
-
-            mail = outlook.CreateItem(0)
-            mail.To = email
-            mail.SentOnBehalfOfName = "hackrpi@rpi.edu"
-            mail.Subject = f"HackRPI 2025 Sponsorship Invitation for {company_name}"
-
-            html_body = html_template.replace("{contact_name}", contact_name).replace("{company_name}", company_name)
-            mail.HTMLBody = html_body
-
-            if send_mode:
-                mail.Send()
-                print(f"Sent email to {contact_name} at {company_name} ({email})", flush=True)
-            else:
-                mail.Display()
-                print(f"Drafted email to {contact_name} at {company_name} ({email})", flush=True)
-
-                if i == 0:
-                    confirm_after_first_draft()
-            #precents outlook from crashing
-            time.sleep(1)
-
-    finally:
-        pythoncom.CoUninitialize()
-
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    app = EmailSenderGUI(root)
+    root.mainloop()
