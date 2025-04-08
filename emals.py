@@ -94,6 +94,6 @@ if outlook:
         """
 
         mail.Display()
-        print(f"Drafted email to {contact_name} at {company_name} ({email})")
+        print(f"Drafted email to {contact_name} at {company_name} ({email})",flush=True)
 else:
     print("Script terminated due to Outlook startup failure.")
