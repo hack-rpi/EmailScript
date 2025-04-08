@@ -49,24 +49,22 @@ def get_user_input():
         print(f"HTML template file not found: {html_file}")
         sys.exit(1)
 
-    
     while True:
-        mode_input = input("Would you like to directly send the emails?: (y/n)").strip()
+        mode_input = input("Would you like to directly send the emails? (y/n): ").strip().lower()
         if mode_input == "y":
             while True:
-                send_mode_input = input("Please confirm you would like to dirently send the emails by typing \"CONFIRM\". To draft instead please type \"DRAFT\"").strip().lower()
+                send_mode_input = input("Please confirm you would like to directly send the emails by typing \"CONFIRM\". To draft instead please type \"DRAFT\": ").strip().lower()
                 if send_mode_input == "confirm":
                     send_mode = True
                     print("Direct send mode selected.")
                     break
                 elif send_mode_input == "draft":
-                    print("Drafting mode selected.")
                     send_mode = False
+                    print("Drafting mode selected.")
                     break
                 else:
                     print("Invalid input. Please type CONFIRM or DRAFT.")
-            send_mode = True
-            break
+            break 
         elif mode_input == "n":
             send_mode = False
             break
