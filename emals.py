@@ -37,30 +37,10 @@ def open_outlook():
         print(f"Failed to start Outlook: {e}")
         return None
 
-def parse_args():
-    csv_file = None
-    html_file = None
-    send_mode = False
-
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        if args[i] == "--csv" and i + 1 < len(args):
-            csv_file = args[i + 1]
-            i += 2
-        elif args[i] == "--html" and i + 1 < len(args):
-            html_file = args[i + 1]
-            i += 2
-        elif args[i] == "--NODISPLAY":
-            send_mode = True
-            i += 1
-        else:
-            print(f"Unknown or incomplete argument: {args[i]}")
-            sys.exit(1)
-
-    if not csv_file or not html_file:
-        print("Usage: python send_emails.py --csv <contacts.csv> --html <template.html> [--NODISPLAY]")
-        sys.exit(1)
+def get_user_input():
+    csv_file = input("Enter the name of the CSV file (e.g., Mails.csv): ").strip()
+    html_file = input("Enter the name of the HTML template file (e.g., email_template.html): ").strip()
+    send_direct = input("Send emails directly? (y/N): ").strip().lower() == 'y'
 
     if not os.path.exists(csv_file):
         print(f"CSV file not found: {csv_file}")
@@ -70,7 +50,7 @@ def parse_args():
         print(f"HTML template file not found: {html_file}")
         sys.exit(1)
 
-    return csv_file, html_file, send_mode
+    return csv_file, html_file, send_direct
 
 def validate_csv(df):
     if not REQUIRED_COLUMNS.issubset(df.columns):
@@ -79,7 +59,7 @@ def validate_csv(df):
         sys.exit(1)
 
 def main():
-    csv_file, html_file, send_mode = parse_args()
+    csv_file, html_file, send_mode = get_user_input()
     outlook = open_outlook()
 
     if not outlook:
@@ -113,8 +93,8 @@ def main():
                 mail.Display()
                 print(f"Drafted email to {contact_name} at {company_name} ({email})", flush=True)
 
-            
-            time.sleep(1)
+            # Optional delay to prevent Outlook lag
+            # time.sleep(1)
 
     finally:
         pythoncom.CoUninitialize()
