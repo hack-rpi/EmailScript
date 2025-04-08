@@ -93,8 +93,8 @@ def main():
                 mail.Display()
                 print(f"Drafted email to {contact_name} at {company_name} ({email})", flush=True)
 
-            # Optional delay to prevent Outlook lag
-            # time.sleep(1)
+            
+            time.sleep(1)
 
     finally:
         pythoncom.CoUninitialize()
