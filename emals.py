@@ -40,7 +40,6 @@ def open_outlook():
 def get_user_input():
     csv_file = input("Enter the name of the CSV file (e.g., Mails.csv): ").strip()
     html_file = input("Enter the name of the HTML template file (e.g., email_template.html): ").strip()
-    send_direct = input("Send emails directly? (y/N): ").strip().lower() == 'y'
 
     if not os.path.exists(csv_file):
         print(f"CSV file not found: {csv_file}")
@@ -50,13 +49,37 @@ def get_user_input():
         print(f"HTML template file not found: {html_file}")
         sys.exit(1)
 
-    return csv_file, html_file, send_direct
+
+    while True:
+        mode_input = input("Type CONFIRM to send emails directly, or CANCEL to only draft them: ").strip()
+        if mode_input == "CONFIRM":
+            send_mode = True
+            break
+        elif mode_input == "CANCEL":
+            send_mode = False
+            break
+        else:
+            print("Invalid input. Please type CONFIRM or CANCEL.")
+
+    return csv_file, html_file, send_mode
 
 def validate_csv(df):
     if not REQUIRED_COLUMNS.issubset(df.columns):
         missing = REQUIRED_COLUMNS - set(df.columns)
         print(f"CSV is missing required columns: {', '.join(missing)}")
         sys.exit(1)
+
+def confirm_before_drafting():
+    proceed = input("Do you want to draft the emails now? (y/N): ").strip().lower()
+    if proceed != 'y':
+        print("Drafting canceled by user.")
+        sys.exit(0)
+
+def confirm_after_first_draft():
+    response = input("Is the first draft correct? Type YES to continue drafting the rest or anything else to cancel: ").strip()
+    if response != "YES":
+        print("Canceled remaining drafts.")
+        sys.exit(0)
 
 def main():
     csv_file, html_file, send_mode = get_user_input()
@@ -73,7 +96,10 @@ def main():
         with open(html_file, 'r', encoding='utf-8') as f:
             html_template = f.read()
 
-        for _, row in contacts.iterrows():
+        if not send_mode:
+            confirm_before_drafting()
+
+        for i, (_, row) in enumerate(contacts.iterrows()):
             contact_name = row["Name"]
             company_name = row["Company"]
             email = row["Email"]
@@ -93,7 +119,10 @@ def main():
                 mail.Display()
                 print(f"Drafted email to {contact_name} at {company_name} ({email})", flush=True)
 
-            
+                if i == 0:
+                    confirm_after_first_draft()
+
+            #keep this delay it is annoying but it helps to keep outlook from crashing
             time.sleep(1)
 
     finally:
