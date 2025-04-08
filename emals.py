@@ -80,23 +80,23 @@ def validate_csv(df):
         sys.exit(1)
 
 def confirm_before_drafting():
-    proceed = input("Do you want to draft the emails now? (y/N): ").strip().lower()
+    proceed = input("Do you want to draft the emails now? (y/n): ").strip().lower()
     if proceed != 'y':
         print("Drafting canceled by user.")
         sys.exit(0)
 
 def confirm_after_first_draft():
-    response = input("Is the first draft correct? Type \"YES\" to continue drafting the rest \"CANCEL\" to cancel: ").strip()
     while True:
-        if response.lower() == "yes":
+        response = input("Is the first draft correct? Type \"YES\" to continue drafting the rest or \"CANCEL\" to cancel: ").strip().lower()
+        if response == "yes":
             print("Continuing to draft remaining emails.")
             break
-        elif response.lower() == "cancel":
+        elif response == "cancel":
             print("Canceled remaining drafts.")
             sys.exit(0)
         else:
             print("Invalid input. Please type \"YES\" or \"CANCEL\".")
-            response = input("Is the first draft correct? Type \"YES\" to continue drafting the rest \"CANCEL\" to cancel: ").strip()
+
 
 
 def main():
