@@ -5,6 +5,9 @@ import win32com.client as win32
 import pythoncom
 import win32com.client.gencache
 import time
+import os
+
+REQUIRED_COLUMNS = {"Name", "Company", "Email"}
 
 def is_outlook_running():
     try:
@@ -34,7 +37,49 @@ def open_outlook():
         print(f"Failed to start Outlook: {e}")
         return None
 
-def main(send_mode=False):
+def parse_args():
+    csv_file = None
+    html_file = None
+    send_mode = False
+
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--csv" and i + 1 < len(args):
+            csv_file = args[i + 1]
+            i += 2
+        elif args[i] == "--html" and i + 1 < len(args):
+            html_file = args[i + 1]
+            i += 2
+        elif args[i] == "--NODISPLAY":
+            send_mode = True
+            i += 1
+        else:
+            print(f"Unknown or incomplete argument: {args[i]}")
+            sys.exit(1)
+
+    if not csv_file or not html_file:
+        print("Usage: python send_emails.py --csv <contacts.csv> --html <template.html> [--NODISPLAY]")
+        sys.exit(1)
+
+    if not os.path.exists(csv_file):
+        print(f"CSV file not found: {csv_file}")
+        sys.exit(1)
+
+    if not os.path.exists(html_file):
+        print(f"HTML template file not found: {html_file}")
+        sys.exit(1)
+
+    return csv_file, html_file, send_mode
+
+def validate_csv(df):
+    if not REQUIRED_COLUMNS.issubset(df.columns):
+        missing = REQUIRED_COLUMNS - set(df.columns)
+        print(f"CSV is missing required columns: {', '.join(missing)}")
+        sys.exit(1)
+
+def main():
+    csv_file, html_file, send_mode = parse_args()
     outlook = open_outlook()
 
     if not outlook:
@@ -42,12 +87,11 @@ def main(send_mode=False):
         return
 
     try:
-        contacts = pd.read_csv("Mails.csv")
+        contacts = pd.read_csv(csv_file)
+        validate_csv(contacts)
 
-        required_columns = {"Name", "Company", "Email"}
-        if not required_columns.issubset(contacts.columns):
-            print(f"CSV is missing required columns: {required_columns - set(contacts.columns)}")
-            sys.exit(1)
+        with open(html_file, 'r', encoding='utf-8') as f:
+            html_template = f.read()
 
         for _, row in contacts.iterrows():
             contact_name = row["Name"]
@@ -59,49 +103,8 @@ def main(send_mode=False):
             mail.SentOnBehalfOfName = "hackrpi@rpi.edu"
             mail.Subject = f"HackRPI 2025 Sponsorship Invitation for {company_name}"
 
-            mail.HTMLBody = f"""
-            <html>
-            <body style="font-family:Segoe UI, sans-serif; font-size:14px; color:#333333; line-height:1.6;">
-                <p>Hello {contact_name},</p>
-
-                <p>
-                Our team is thrilled to announce <strong>HackRPI 2025</strong> – the upcoming annual HackRPI event taking place in the fall. 
-                We will be hosting this event on <strong>November 15–16</strong> at 
-                <a href="https://www.rpi.edu" style="color:#0066cc; text-decoration:none;">Rensselaer Polytechnic Institute</a> in Troy, New York.
-                </p>
-
-                <p>
-                HackRPI is a student-run organization that hosts annual hackathons at Rensselaer Polytechnic Institute. 
-                We firmly believe hackathons are a leading source of innovation and ingenuity. 
-                As such, we invite students with diverse programming backgrounds from across the globe to form teams, 
-                generate novel ideas, and design original prototypes. 
-                Last November’s hackathon had upwards of <strong>500 attendees</strong>, making us the largest hackathon in New York’s Capital District.
-                </p>
-
-                <p>
-                Our team would like to invite <strong>{company_name}</strong> to sponsor HackRPI 2025 this year. 
-                As a sponsor, <strong>{company_name}</strong> will receive various perks as detailed in our sponsorship booklet.
-                </p>
-
-                <p>
-                We also want to thank our past sponsors for all the invaluable feedback they have provided to make these events possible. 
-                With a decade of experience now behind us, we fully intend on turning HackRPI 2025 into our greatest hackathon yet.
-                </p>
-
-                <p>
-                Please feel free to reach back out to me with any questions regarding a potential sponsorship, 
-                and let me know if you would like to receive a copy of our sponsorship booklet.
-                </p>
-
-                <p style="margin-top: 30px;">
-                Regards,<br>
-                Aaryan Guatam<br>
-                Director of Sponsorship<br>
-                <em>HackRPI Organizing Team</em>
-                </p>
-            </body>
-            </html>
-            """
+            html_body = html_template.replace("{contact_name}", contact_name).replace("{company_name}", company_name)
+            mail.HTMLBody = html_body
 
             if send_mode:
                 mail.Send()
@@ -110,13 +113,11 @@ def main(send_mode=False):
                 mail.Display()
                 print(f"Drafted email to {contact_name} at {company_name} ({email})", flush=True)
 
-
+            
+            time.sleep(1)
 
     finally:
         pythoncom.CoUninitialize()
 
-
 if __name__ == "__main__":
-
-    send_flag = "--NODISPLAY" in sys.argv
-    main(send_mode=send_flag)
+    main()
