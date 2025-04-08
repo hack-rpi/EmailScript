@@ -86,10 +86,18 @@ def confirm_before_drafting():
         sys.exit(0)
 
 def confirm_after_first_draft():
-    response = input("Is the first draft correct? Type YES to continue drafting the rest or anything else to cancel: ").strip()
-    if response != "YES":
-        print("Canceled remaining drafts.")
-        sys.exit(0)
+    response = input("Is the first draft correct? Type \"YES\" to continue drafting the rest \"CANCEL\" to cancel: ").strip()
+    while True:
+        if response.lower() == "yes":
+            print("Continuing to draft remaining emails.")
+            break
+        elif response.lower() == "cancel":
+            print("Canceled remaining drafts.")
+            sys.exit(0)
+        else:
+            print("Invalid input. Please type \"YES\" or \"CANCEL\".")
+            response = input("Is the first draft correct? Type \"YES\" to continue drafting the rest \"CANCEL\" to cancel: ").strip()
+
 
 def main():
     csv_file, html_file, send_mode = get_user_input()
