@@ -42,6 +42,16 @@ class EmailSenderApp:
         self.build_csv_viewer_tab(notebook)
 
     def build_email_tab(self, notebook):
+        def preview_html():
+            try:
+                html = self.html_editor.get("1.0", tk.END)
+                preview_window = tk.Toplevel(self.root)
+                preview_window.title("HTML Preview")
+                preview_window.geometry("800x600")
+                preview_label = HTMLLabel(preview_window, html=html)
+                preview_label.pack(fill="both", expand=True, padx=10, pady=10)
+            except Exception as e:
+                messagebox.showerror("Preview Error", str(e))
         email_tab = tk.Frame(notebook)
         notebook.add(email_tab, text="Email Composer")
 
@@ -82,6 +92,7 @@ class EmailSenderApp:
         self.image_preview_frame.grid(row=7, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
 
         tk.Button(email_tab, text="Draft Emails", command=lambda: self.send_emails(draft_only=True)).grid(row=8, column=1, sticky="e", padx=5, pady=10)
+        tk.Button(email_tab, text="Preview HTML", command=preview_html).grid(row=8, column=0, sticky="w", padx=5, pady=10)
         tk.Button(email_tab, text="Send Emails", command=lambda: self.send_emails(draft_only=False)).grid(row=8, column=2, sticky="e", padx=5, pady=10)
 
     def build_csv_viewer_tab(self, notebook):
@@ -164,6 +175,12 @@ class EmailSenderApp:
             self.history.append(('images', list(self.image_paths)))
             self.image_paths.extend(paths)
             self.show_image_previews()
+
+            # Auto-insert <img> tag into HTML body for the first image added
+            if not self.use_html_file.get():
+                for i, new_img in enumerate(paths):
+                    tag = f'<img src="cid:image{i}" alt="Embedded Image {i}" style="max-width:100%;"><br>'
+                    self.html_editor.insert(tk.END, tag)
 
     def undo_last_action(self):
         if not self.history:
